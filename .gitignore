@@ -1,0 +1,2 @@
+# ignore the original data, the downloaded .tar.gz file and its extracted contents.
+data/original/

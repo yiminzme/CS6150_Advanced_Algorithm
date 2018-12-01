@@ -1,2 +1,5 @@
 # ignore the original data, the downloaded .tar.gz file and its extracted contents.
 data/original/
+
+# ignore the full extracted data
+data/Caltech101_full.npy

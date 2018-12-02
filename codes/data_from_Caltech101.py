@@ -18,8 +18,8 @@ import os
 import cv2
 from tqdm import tqdm # progress bar
 
-images_dir = "data/original/101_ObjectCategories/"
-output_file = "data/Caltech101_full"
+images_dir = "./data/original/101_ObjectCategories/"
+output_file = "./data/Caltech101_full"
 
 vectors = np.empty([0, 128], dtype=int) # The matrix to collect all the vectors
 n_vectors = []

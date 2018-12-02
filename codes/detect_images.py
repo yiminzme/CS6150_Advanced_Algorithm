@@ -61,13 +61,13 @@ if __name__ == '__main__':
             epilog = '''A feature vector has 128 integers. \n
             The number of vectors of each usual image may be hundrads
             to thousands, depends on the complexity of the image. ''')
-    parser.add_argument('-i', default = 'data/original/101_ObjectCategories/',
+    parser.add_argument('-i', default = './data/original/101_ObjectCategories/',
                         help='Input dir, the top dir of all the images to be process.')
-    parser.add_argument('-o', default = 'data/Caltech101_small',
+    parser.add_argument('-o', default = './data/Caltech101_small',
                         help="Output filename, ext '.npy' will be append automatictly.")
     parser.add_argument('-l', default = '10', 
                         help = "Number of images to be process. use 'all' for \
-                        unlimit, process all images.")    
+                        unlimit, process all images.")
     args = parser.parse_args()
     
     vectors = mp.Queue() # The matrix to collect all the vectors

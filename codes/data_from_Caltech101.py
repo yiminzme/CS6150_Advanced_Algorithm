@@ -2,7 +2,7 @@
 """
 Don't run it, use multiprocessing version instead.
     But the code is easy to understand.
-    
+
 The output of the last run:
     100%|██████████| 9145/9145 [1:33:56<00:00,  1.06s/it]
     Total vectors:  4183192

@@ -7,29 +7,29 @@ This program extract huge 128-dimensional feature vectors form a lot of images:
     2. Extract thounds of vectors from each image.
     3. Concatenate all the vectors.
     4. Save the all these 128-dimensional vectors into a file.
-    
+
 How to use it?
     1. Set the images_dir, the top directory of all the image files
     2. Set the output_file, the name of the file to store the result data.
     3. Set the image_file_limit, the limit number of the images to be processed.
         There are must more actual images than this limit.
-    4. Run. After finish, you will see the total vectors, as well as the mean, 
+    4. Run. After finish, you will see the total vectors, as well as the mean,
         min, and max vectors of each image.
 
 Libraries:
     cv2: opencv-contrib: https://anaconda.org/michael_wild/opencv-contrib
-        Note: Other Opencv distributions don't come with SIFT, which is 
-        necessary to extract feature vectors from images. 
+        Note: Other Opencv distributions don't come with SIFT, which is
+        necessary to extract feature vectors from images.
         This distribution may also work, I have not tried.
             pip install opencv-contrib-python
 
-Reference:    
+Reference:
     Where did SIFT and SURF go in OpenCV 3?
     https://www.pyimagesearch.com/2015/07/16/where-did-sift-and-surf-go-in-opencv-3/
-    
+
     Multiprocessing: use tqdm to display a progress bar
     https://stackoverflow.com/questions/41920124/multiprocessing-use-tqdm-to-display-a-progress-bar
-    
+
 Created on Wed Nov 28 20:36:15 2018
 
 @author: benwei
@@ -65,21 +65,21 @@ if __name__ == '__main__':
                         help='Input dir, the top dir of all the images to be process.')
     parser.add_argument('-o', default = './data/Caltech101_small',
                         help="Output filename, ext '.npy' will be append automatictly.")
-    parser.add_argument('-l', default = '10', 
+    parser.add_argument('-l', default = '10',
                         help = "Number of images to be process. use 'all' for \
                         unlimit, process all images.")
     args = parser.parse_args()
-    
+
     vectors = mp.Queue() # The matrix to collect all the vectors
     n_vectors = mp.Queue()
     image_files = []
     for root, dirs, files in os.walk(args.i):
         for file in files:
             image_files.append(os.path.join(root, file))
-    
+
     if args.l != 'all':
         image_files = image_files[:int(args.l)]
-    
+
     pool = mp.Pool()
     image_vectors = list(tqdm(pool.imap(vectors_from_image, image_files), total=len(image_files)))
 

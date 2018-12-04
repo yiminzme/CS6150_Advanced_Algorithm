@@ -74,8 +74,8 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
     with Sketches for Similarity Search in High-Dimensional Spaces* by 
     Wei Dong, Moses Charikar, and Kai Li.
     """
-    def __init__(self, n_neighbors=5, sketch_method=None, sketch_size=20, 
-                 strip_window = 50, candidates_scale=20, random_state=None):
+    def __init__(self, n_neighbors=5, sketch_method=None, sketch_size=20, strip_window = 50, candidates_scale=20,
+                group_size=4, group_threshold=0.1, random_state=None,):
         # NeighborsBase
         super(SketchKNN, self).__init__(n_neighbors=n_neighbors)        
         self.sketch_size = sketch_size
@@ -83,6 +83,10 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         self.sketch_method = sketch_method
         self.candidates_scale = candidates_scale
         self.random_state = random_state
+
+        self.g_size = group_size
+        self.g_strip_window = (sketch_size/group_size)*strip_window
+        self.g_threshold = group_threshold
     
     def fit(self, X):
         """Fit the model using X as data
@@ -96,10 +100,9 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         
         self._partition()
         
-        # random_state = check_random_state(self.random_state)
-        
-        self._sketch_X = self._sketch(self._fit_X) # self._sketch_X
-        
+        self._sketch_X, self._g_sketch_X = self._sketch(self._fit_X, return_label=True) # self._sketch_X, self._g_sketch_X
+        # self._sketch_X = self._sketch(self._fit_X, return_label=True) # self._sketch_X
+
         return self
     
     def _partition(self):
@@ -107,7 +110,9 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         n_features = self._fit_X.shape[1]
         self._A = random_state.normal(size = [self.sketch_size, n_features]) / math.sqrt(n_features)
         self._b = random_state.uniform(0, self.strip_window, self.sketch_size)
-        
+        self._g_A = random_state.normal(size = [self.g_size, n_features]) / math.sqrt(n_features)
+        self._g_b = random_state.uniform(0, self.g_strip_window, self.g_size)
+
     def kneighbors(self, X, n_neighbors=None, sketch_method=None, candidates_scale=None, return_distance=False):
         """Fast finds the approximate K-neighbors of each point using sketch.
         Returns indices of and distances to the neighbors of each point.
@@ -173,10 +178,10 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
             elif sketch_method == 'asymmetric':
                 # TODO: sketch X (query points)
                 sketch_X, weight = self._sketch(X, return_weight=True)
-                sketch_X_weight = sketch_X+weight # encode sketch_X and weight together
+                _sketch_X_weight = sketch_X+weight # encode sketch_X and weight together
                 # TODO: filter candidates
                 candidates = list(pairwise_distances_chunked(
-                        sketch_X_weight, self._sketch_X, reduce_func=reduce_func_1,
+                        _sketch_X_weight, self._sketch_X, reduce_func=reduce_func_1,
                         metric=paired_asymmetric_distance, n_jobs=n_jobs))
             elif sketch_method == 'PCA':
                 # TODO: sketch X (query points)
@@ -184,8 +189,22 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
                 pass
             elif sketch_method == 'g_asymmetric':
                 # TODO: sketch X (query points)
+                sketch_X, weight, g_sketch_X, g_weight = self._sketch(X, return_weight=True, return_label=True)
+                _sketch_X_weight = sketch_X+weight # encode sketch_X and weight together
+                # TODO: filter label
+                Inds = [np.where(q>=self.g_threshold)[0] for q in g_weight] # each row: indices of (q>=threshold)
+                Label = [q[inds] for q, inds in zip(g_sketch_X, Inds)] # each row: binary elms of (q>=threshold)
+                Candidate_inds = [np.where((self._g_sketch_X[:,inds]==label).all(axis=1))[0]
+                                  for label, inds in zip(Label, Inds)] # each row: self._g_sketch_X's row numbers that matched label
                 # TODO: filter candidates
-                pass
+                candidates = []
+                for i in range(len(Candidate_inds)):
+                    candidate_inds = Candidate_inds[i]
+                    tmp1 = self._sketch_X[candidate_inds, :]
+                    tmp2 = _sketch_X_weight[[i]]
+                    candidates += list(pairwise_distances_chunked(
+                            tmp2, tmp1, reduce_func=reduce_func_1,
+                            metric=paired_asymmetric_distance, n_jobs=n_jobs))
             else:
                 raise ValueError("%s sketch_method has not been implemented.".format(sketch_method))
             candidates = np.vstack(candidates)
@@ -223,15 +242,21 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         
         return result
     
-    def _sketch(self, X, return_weight = False):
+    def _sketch(self, X, return_weight = False, return_label = False):
         # self._fit_X, self._A, self._W, self._b
+        result = ()
+
         h = (X.dot(self._A.T) + self._b) / self.strip_window
-        sketch = np.mod(np.floor(h),2)
+        result += np.mod(np.floor(h),2), # sketch
         if return_weight:
-            weight = np.minimum(np.ceil(h) - h, h - np.floor(h))
-            return sketch, weight
-        else:
-            return sketch
+             result += np.minimum(np.ceil(h) - h, h - np.floor(h)), # weight
+        if return_label:
+            g_h = (X.dot(self._g_A.T) + self._g_b) / self.g_strip_window
+            result += np.mod(np.floor(g_h), 2), # label
+            if return_weight:
+                result += np.minimum(np.ceil(g_h) - g_h, g_h - np.floor(g_h)), # g_weight
+
+        return result[0] if len(result) == 1 else result
     
         
 # Utility Functions
@@ -245,9 +270,9 @@ def paired_asymmetric_distance(x, y):
 
 if __name__ == '__main__':
     data = np.load("..\data\Caltech101_small.npy")
-    neigh = SketchKNN(n_neighbors=2, sketch_size = 20, random_state = 0)
+    neigh = SketchKNN(n_neighbors=5, sketch_size = 20, random_state = 0)
     neigh.fit(data)
-    dists, neight_inds = neigh.kneighbors(data[:2,:], sketch_method = 'symmetric', return_distance=True, candidates_scale = 20)
+    dists, neight_inds = neigh.kneighbors(data[:2,:], sketch_method = 'g_asymmetric', return_distance=True, candidates_scale = 20)
     print("distance: ", dists)
     print("neight_inds: ", neight_inds)
     '''

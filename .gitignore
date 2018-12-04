@@ -5,3 +5,6 @@ codes/.ipynb_checkpoints/
 
 # ignore the full extracted data
 data/Caltech101_full.npy
+
+# ignore the python catch files
+*.pyc 

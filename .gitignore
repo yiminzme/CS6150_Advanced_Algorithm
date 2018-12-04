@@ -1,5 +1,7 @@
 # ignore the original data, the downloaded .tar.gz file and its extracted contents.
 data/original/
+codes/.ipynb_checkpoints/
+.idea/
 
 # ignore the full extracted data
 data/Caltech101_full.npy

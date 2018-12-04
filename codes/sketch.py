@@ -172,8 +172,12 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
                         metric=paired_hamming_distance, n_jobs=n_jobs))
             elif sketch_method == 'asymmetric':
                 # TODO: sketch X (query points)
+                sketch_X, weight = self._sketch(X, return_weight=True)
+                sketch_X_weight = sketch_X+weight # encode sketch_X and weight together
                 # TODO: filter candidates
-                pass
+                candidates = list(pairwise_distances_chunked(
+                        sketch_X_weight, self._sketch_X, reduce_func=reduce_func_1,
+                        metric=paired_asymmetric_distance, n_jobs=n_jobs))
             elif sketch_method == 'PCA':
                 # TODO: sketch X (query points)
                 # TODO: filter candidates
@@ -233,6 +237,11 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
 # Utility Functions
 def paired_hamming_distance(x, y):
     return np.count_nonzero(x - y)
+
+def paired_asymmetric_distance(x, y):
+    sketch_X = np.floor(x)
+    weight = x % 1
+    return weight.dot(np.abs(sketch_X - y).T)
 
 if __name__ == '__main__':
     data = np.load("..\data\Caltech101_small.npy")

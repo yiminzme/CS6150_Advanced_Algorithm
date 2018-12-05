@@ -50,13 +50,16 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
     strip_window : number, default = 50
         The width of each strip. This parameter does not effect 'PCA' method.
         
-    candidates_scale : :obj:`int`, default = 20
+    candidates_scale : :obj:`int`, default = 10
         Scale up n_neighbors as number of candidate when filtering using 
         sketch. 
         
-    group_size : :obj:`int`, default = 4
+    g_label_size : :obj:`int`, default = None
         The size of group label vector, only for 'g_asymmetric' method. The 
-        label vector use binary bit, so group_size = 3 will result 8 groups.
+        label vector use binary bit, so g_label_size = 3 will result 8 groups.
+        None means auto calculate by number of data points, number of neighbors
+        and candidates' number scale, such that the expacted group size is 10
+        times of number of candidates.
         
     group_threshold : :obj:`float`, default = 0.1
         The threshold for choose group when query.
@@ -93,17 +96,17 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
     Estimation with Sketches for Similarity Search in High-Dimensional Spaces* 
     by Wei Dong, Moses Charikar, and Kai Li.
     """
-    def __init__(self, n_neighbors=5, sketch_method=None, sketch_size=20, strip_window=50, candidates_scale=20,
-                group_size=None, group_threshold=None, random_state=None,):
+    def __init__(self, n_neighbors=5, sketch_method=None, sketch_size=20, strip_window=50, candidates_scale=10,
+                g_label_size=None, group_threshold=0.1, random_state=None,):
         # NeighborsBase
         super(SketchKNN, self).__init__(n_neighbors=n_neighbors)        
         self.sketch_size = sketch_size
         self.strip_window = strip_window
         self.candidates_scale = candidates_scale
         self.random_state = random_state
-        self.g_size = np.ceil(self.sketch_size/20).astype(int) + 6
+        self.g_label_size = g_label_size
         self.g_strip_window = self.strip_window*3 # HYPERPARAMETER
-        self.g_threshold = 0.1 if group_threshold is None else group_threshold # HYPERPARAMETER
+        self.g_threshold = group_threshold # HYPERPARAMETER
         
         self.sketch_method = sketch_method
         self._sketch_tech = {'sketch':False, 'weighted':False, 'label':False, 'pca':False}
@@ -135,8 +138,15 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
             Data, from where find the query point's neighbors.
         """
         super(SketchKNN, self).fit(X) # generate self._fit_X
+        
+        self.n_samples, self.n_features = X.shape
 
         if self._sketch_tech['sketch']:
+            if self.g_label_size is None:
+                self.g_label_size = math.log2(self.n_samples)\
+                - math.log2(self.n_neighbors)\
+                - math.log2(self.candidates_scale) - math.log2(10)
+                self.g_label_size = round(self.g_label_size)
             self._partition()
             if self._sketch_tech['label']:
                 self._sketch_X, self._g_sketch_X = self._sketch(self._fit_X, return_label=True)
@@ -151,11 +161,12 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
     
     def _partition(self):
         random_state = check_random_state(self.random_state)
-        n_features = self._fit_X.shape[1]
+        n_features = self.n_features
         self._A = random_state.normal(size = [self.sketch_size, n_features]) / math.sqrt(n_features)
         self._b = random_state.uniform(0, self.strip_window, self.sketch_size)
-        self._g_A = random_state.normal(size = [self.g_size, n_features]) / math.sqrt(n_features)
-        self._g_b = random_state.uniform(0, self.g_strip_window, self.g_size)
+        if self._sketch_tech['label']:
+            self._g_A = random_state.normal(size = [self.g_label_size, n_features]) / math.sqrt(n_features)
+            self._g_b = random_state.uniform(0, self.g_strip_window, self.g_label_size)
 
     def kneighbors(self, X, n_neighbors=None, sketch_method=None, candidates_scale=None, return_distance=False):
         """Fast finds the approximate K-neighbors of each point using sketch.
@@ -251,7 +262,6 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
                     for label in labels:
                         inds |= self._g_dict[label]
                     Candidate_inds.append(inds) # get row number of data points that matched query point's labels
-                print(self._sketch_X.shape[0],[len(inds) for inds in Candidate_inds]) # size after label-filtered
                 # TODO: filter candidates
                 candidates = []
                 for i in range(len(Candidate_inds)): # for each query point
@@ -318,9 +328,8 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
 
     # Helper Functions
     def _label_dict(self):  # build {label, inds} dict for self._g_dict
-        groups = np.empty([2, self.g_size], dtype=object)
         dict = {}
-        for i in range(self.g_size):
+        for i in range(self.g_label_size):
             icol = self._g_sketch_X[:, i].astype(bool)
             inds_one = set(np.where(icol)[0])  # inds of one in ith column of _g_sketch_X
             inds_zero = set(np.where(~icol)[0])  # inds of zero in ith column of _g_sketch_X
@@ -371,9 +380,9 @@ def paired_asymmetric_distance(x, y):
 
 if __name__ == '__main__':
     data = np.load("..\data\Caltech101_small.npy")
-    neigh = SketchKNN(n_neighbors=4, sketch_size = 20, random_state = 0)
+    neigh = SketchKNN(n_neighbors=5, sketch_size = 50, strip_window = 30, random_state = 0)
     neigh.fit(data)
-    dists, neight_inds = neigh.kneighbors(data[:7,:], sketch_method = 'g_asymmetric', return_distance=True, candidates_scale = 20)
+    dists, neight_inds = neigh.kneighbors(data[:1,:], sketch_method = 'g_asymmetric', return_distance=True, candidates_scale = 10)
     print("distance: ", dists)
     print("neight_inds: ", neight_inds)
     '''

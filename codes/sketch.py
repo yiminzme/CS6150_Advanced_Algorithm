@@ -16,6 +16,7 @@ from sklearn.utils.validation import check_is_fitted
 from sklearn.utils import check_array, check_random_state
 from sklearn.neighbors.base import NeighborsBase, KNeighborsMixin, UnsupervisedMixin
 from sklearn.utils._joblib import effective_n_jobs
+from sklearn.decomposition import PCA
 import math
 
 class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
@@ -26,35 +27,46 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
     
     Parameters
     ----------
-    n_neighbors : int, optional (default = 5)
+    
+    n_neighbors : :obj:`int`, default = 5
         Number of neighbors to use by default for :meth:`kneighbors` queries.
-    sketch_method : {None, 'symmetric', 'asymmetric', 'g_asymmetric', 'PCA'}, optional (defalut = None)
-        Method to be used to compute the sketch:
+        
+    sketch_method : {:obj:`None`, 'symmetric', 'asymmetric', 'g_asymmetric', 'PCA'}, defalut = :obj:`None`
+        Method to be used to compute the sketch: 
+            
         - None will do all these available sketch, user can choose the method
           when query by :meth:`kneighbors` method.
         - 'symmetric' is not weighted
         - 'asymmetric' is weighted symmetric
         - 'g_asymmetric' is grouped asymmetric
         - 'PCA' use float number in each sketch elements.
+        
         Note: If it is not None here, the sketch_method passed to 
         :meth:`kneighbors` method will be ignored.
-    sketch_size : int, optional (default = 20)
+        
+    sketch_size : :obj:`int`, default = 20
         The size of one sketch vector of each data point (row).
-    strip_window : number, optional (default = 50)
+        
+    strip_window : number, default = 50
         The width of each strip. This parameter does not effect 'PCA' method.
-    candidates_scale : int
+        
+    candidates_scale : :obj:`int`, default = 20
         Scale up n_neighbors as number of candidate when filtering using 
-        sketch. (defaluts to 20).
-    group_size : int, optional (default = 4)
+        sketch. 
+        
+    group_size : :obj:`int`, default = 4
         The size of group label vector, only for 'g_asymmetric' method. The 
         label vector use binary bit, so group_size = 3 will result 8 groups.
-    group_threshold : float, optional (default = 0.1)
+        
+    group_threshold : :obj:`float`, default = 0.1
         The threshold for choose group when query.
-    random_state : {None, int, :class:`random_state`}, optimal (default = None)
+        
+    random_state : {:obj:`None`, :obj:`int`, :class:`random_state`}, default = :obj:`None`
         Int will be used as numpy random seed.
         
     Examples
     --------
+    
     In the following example, we construct a NeighborsClassifier
     class from an array representing our data set and ask who's
     the closest point to [1,1,1]
@@ -87,13 +99,32 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         super(SketchKNN, self).__init__(n_neighbors=n_neighbors)        
         self.sketch_size = sketch_size
         self.strip_window = strip_window
-        self.sketch_method = sketch_method
         self.candidates_scale = candidates_scale
         self.random_state = random_state
-
         self.g_size = group_size
         self.g_strip_window = (sketch_size/group_size)*strip_window
-        self.g_threshold = group_threshold
+        self.g_threshold = group_threshold        
+        
+        self.sketch_method = sketch_method
+        self._sketch_tech = {'sketch':False, 'weighted':False, 'label':False, 'pca':False}
+        if sketch_method is None:
+            self._sketch_tech['sketch'] = True
+            self._sketch_tech['weighted'] = True
+            self._sketch_tech['label'] = True
+            self._sketch_tech['pca'] = True
+        elif sketch_method == 'symmetric':
+            self._sketch_tech['sketch'] = True
+        elif sketch_method == 'asymmetric':
+            self._sketch_tech['sketch'] = True
+            self._sketch_tech['weighted'] = True
+        elif sketch_method == 'g_asymmetric':
+            self._sketch_tech['sketch'] = True
+            self._sketch_tech['weighted'] = True
+            self._sketch_tech['label'] = True
+        elif sketch_method == 'PCA':
+            self._sketch_tech['pca'] = True
+        else:
+            raise ValueError("%s sketch_method has not been implemented.".format(self.sketch_method))
     
     def fit(self, X):
         """Fit the model using X as data
@@ -105,10 +136,15 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         """
         super(SketchKNN, self).fit(X) # generate self._fit_X
         
-        self._partition()
-        
-        self._sketch_X, self._g_sketch_X = self._sketch(self._fit_X, return_label=True) # self._sketch_X, self._g_sketch_X
-        # self._sketch_X = self._sketch(self._fit_X, return_label=True) # self._sketch_X
+        if self._sketch_tech['sketch']:
+            self._partition()
+            if self._sketch_tech['label']:
+                self._sketch_X, self._g_sketch_X = self._sketch(self._fit_X, return_label=True)
+            else:
+                self._sketch_X = self._sketch(self._fit_X)
+        if self._sketch_tech['pca']:
+            self._pca = PCA(n_components=self.sketch_size)
+            self._pca_X = self._pca.fit_transform(self._fit_X)
 
         return self
     
@@ -128,27 +164,26 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         ----------
         X : array-like, shape (n_query, n_features).
             The query point or points.
-        n_neighbors : int
-            Number of neighbors to get (default is the value
-            passed to the constructor).
-        sketch_method : {None, 'symmetric', 'asymmetric', 'g_asymmetric', 'PCA'}, optional (defalut = None)
+        n_neighbors : :obj:`int`, :obj:
+            Number of neighbors to get.
+        sketch_method : {:obj:`None`, 'symmetric', 'asymmetric', 'g_asymmetric', 'PCA'}, defalut = :obj:`None`
             Method to be used to filter candidates before rank the real distances.
             If non None value passed to the constructor, this value will be 
             ignored. If both constructor and this method get None, It will not
             use any sketch filter, act just like normal KNN. See constructor 
             for more details.
-        candidates_scale : int
+        candidates_scale : :obj:`int`, default is the value passed to the constructor
             Scale up n_neighbors as number of candidate when filtering using 
-            sketch. (default is the value passed to the constructor).
-        return_distance : boolean, optional. Defaults to False.
+            sketch. 
+        return_distance : :obj:`boolean`, default = :obj:`False`.
             If False, distances will not be returned
         
         Returns
         -------
-        dist : array
+        dist : :obj:`array`
             Array representing the lengths to points, only present if
-            return_distance=True
-        ind : array
+            return_distance= :obj:`True`
+        ind : :obj:`array`
             Indices of the nearest points in the population matrix.
         """
         check_is_fitted(self, ["_fit_X"])
@@ -197,9 +232,12 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
                         _sketch_X_weight, self._sketch_X, reduce_func=reduce_func_1,
                         metric=paired_asymmetric_distance, n_jobs=n_jobs))
             elif sketch_method == 'PCA':
-                # TODO: sketch X (query points)
-                # TODO: filter candidates
-                pass
+                # sketch X (query points)
+                sketch_X = self._pca.transform(X)
+                # filter candidates
+                candidates = list(pairwise_distances_chunked(
+                        sketch_X, self._pca_X, reduce_func=reduce_func_1,
+                        metric=self.effective_metric_, n_jobs=n_jobs, **kwds))
             elif sketch_method == 'g_asymmetric':
                 # TODO: sketch X (query points)
                 sketch_X, weight, g_sketch_X, g_weight = self._sketch(X, return_weight=True, return_label=True)
@@ -285,7 +323,7 @@ if __name__ == '__main__':
     data = np.load("..\data\Caltech101_small.npy")
     neigh = SketchKNN(n_neighbors=5, sketch_size = 20, random_state = 0)
     neigh.fit(data)
-    dists, neight_inds = neigh.kneighbors(data[:2,:], sketch_method = 'g_asymmetric', return_distance=True, candidates_scale = 20)
+    dists, neight_inds = neigh.kneighbors(data[:2,:], sketch_method = 'PCA', return_distance=True, candidates_scale = 20)
     print("distance: ", dists)
     print("neight_inds: ", neight_inds)
     '''

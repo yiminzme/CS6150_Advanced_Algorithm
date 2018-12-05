@@ -93,17 +93,17 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
     Estimation with Sketches for Similarity Search in High-Dimensional Spaces* 
     by Wei Dong, Moses Charikar, and Kai Li.
     """
-    def __init__(self, n_neighbors=5, sketch_method=None, sketch_size=20, strip_window = 50, candidates_scale=20,
-                group_size=4, group_threshold=0.1, random_state=None,):
+    def __init__(self, n_neighbors=5, sketch_method=None, sketch_size=20, strip_window=50, candidates_scale=20,
+                group_size=None, group_threshold=None, random_state=None,):
         # NeighborsBase
         super(SketchKNN, self).__init__(n_neighbors=n_neighbors)        
         self.sketch_size = sketch_size
         self.strip_window = strip_window
         self.candidates_scale = candidates_scale
         self.random_state = random_state
-        self.g_size = group_size
-        self.g_strip_window = (sketch_size/group_size)*strip_window
-        self.g_threshold = group_threshold
+        self.g_size = np.ceil(self.sketch_size/20).astype(int) + 6
+        self.g_strip_window = self.strip_window*3 # HYPERPARAMETER
+        self.g_threshold = 0.1 if group_threshold is None else group_threshold # HYPERPARAMETER
         
         self.sketch_method = sketch_method
         self._sketch_tech = {'sketch':False, 'weighted':False, 'label':False, 'pca':False}
@@ -251,15 +251,18 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
                     for label in labels:
                         inds |= self._g_dict[label]
                     Candidate_inds.append(inds) # get row number of data points that matched query point's labels
+                print(self._sketch_X.shape[0],[len(inds) for inds in Candidate_inds]) # size after label-filtered
                 # TODO: filter candidates
                 candidates = []
                 for i in range(len(Candidate_inds)): # for each query point
-                    candidate_inds = list(Candidate_inds[i]) # get matched inds
+                    candidate_inds = sorted(list(Candidate_inds[i])) # get matched inds
                     tmp1 = self._sketch_X[candidate_inds, :]
                     tmp2 = _sketch_X_weight[[i]]
-                    candidates += list(pairwise_distances_chunked(
+                    iinds = list(pairwise_distances_chunked(
                             tmp2, tmp1, reduce_func=reduce_func_1,
                             metric=paired_asymmetric_distance, n_jobs=n_jobs))
+                    iinds[0][0] = np.array([candidate_inds[ii] for ii in list(iinds[0][0])])
+                    candidates += iinds
             else:
                 raise ValueError("%s sketch_method has not been implemented.".format(sketch_method))
             candidates = np.vstack(candidates)
@@ -368,9 +371,9 @@ def paired_asymmetric_distance(x, y):
 
 if __name__ == '__main__':
     data = np.load("..\data\Caltech101_small.npy")
-    neigh = SketchKNN(n_neighbors=5, sketch_size = 20, random_state = 0)
+    neigh = SketchKNN(n_neighbors=4, sketch_size = 20, random_state = 0)
     neigh.fit(data)
-    dists, neight_inds = neigh.kneighbors(data[:2,:], sketch_method = 'g_asymmetric', return_distance=True, candidates_scale = 20)
+    dists, neight_inds = neigh.kneighbors(data[:7,:], sketch_method = 'g_asymmetric', return_distance=True, candidates_scale = 20)
     print("distance: ", dists)
     print("neight_inds: ", neight_inds)
     '''

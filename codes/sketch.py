@@ -103,7 +103,7 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         self.random_state = random_state
         self.g_size = group_size
         self.g_strip_window = (sketch_size/group_size)*strip_window
-        self.g_threshold = group_threshold        
+        self.g_threshold = group_threshold
         
         self.sketch_method = sketch_method
         self._sketch_tech = {'sketch':False, 'weighted':False, 'label':False, 'pca':False}
@@ -135,11 +135,12 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
             Data, from where find the query point's neighbors.
         """
         super(SketchKNN, self).fit(X) # generate self._fit_X
-        
+
         if self._sketch_tech['sketch']:
             self._partition()
             if self._sketch_tech['label']:
                 self._sketch_X, self._g_sketch_X = self._sketch(self._fit_X, return_label=True)
+                self._g_dict = self._label_dict()
             else:
                 self._sketch_X = self._sketch(self._fit_X)
         if self._sketch_tech['pca']:
@@ -243,14 +244,17 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
                 sketch_X, weight, g_sketch_X, g_weight = self._sketch(X, return_weight=True, return_label=True)
                 _sketch_X_weight = sketch_X+weight # encode sketch_X and weight together
                 # TODO: filter label
-                Inds = [np.where(q>=self.g_threshold)[0] for q in g_weight] # each row: indices of (q>=threshold)
-                Label = [q[inds] for q, inds in zip(g_sketch_X, Inds)] # each row: binary elms of (q>=threshold)
-                Candidate_inds = [np.where((self._g_sketch_X[:,inds]==label).all(axis=1))[0]
-                                  for label, inds in zip(Label, Inds)] # each row: self._g_sketch_X's row numbers that matched label
+                Candidate_inds = []
+                for g_sketch_X_i, g_weight_i in zip(g_sketch_X, g_weight): # for each query point
+                    labels = self._getlabels(g_weight_i, g_sketch_X_i, self.g_threshold) # get query point's labels
+                    inds = set()
+                    for label in labels:
+                        inds |= self._g_dict[label]
+                    Candidate_inds.append(inds) # get row number of data points that matched query point's labels
                 # TODO: filter candidates
                 candidates = []
-                for i in range(len(Candidate_inds)):
-                    candidate_inds = Candidate_inds[i]
+                for i in range(len(Candidate_inds)): # for each query point
+                    candidate_inds = list(Candidate_inds[i]) # get matched inds
                     tmp1 = self._sketch_X[candidate_inds, :]
                     tmp2 = _sketch_X_weight[[i]]
                     candidates += list(pairwise_distances_chunked(
@@ -298,16 +302,58 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         result = ()
 
         h = (X.dot(self._A.T) + self._b) / self.strip_window
-        result += np.mod(np.floor(h),2), # sketch
+        result += np.mod(np.floor(h),2).astype(int), # sketch
         if return_weight:
              result += np.minimum(np.ceil(h) - h, h - np.floor(h)), # weight
         if return_label:
             g_h = (X.dot(self._g_A.T) + self._g_b) / self.g_strip_window
-            result += np.mod(np.floor(g_h), 2), # label
+            result += np.mod(np.floor(g_h), 2).astype(int), # label
             if return_weight:
                 result += np.minimum(np.ceil(g_h) - g_h, g_h - np.floor(g_h)), # g_weight
 
         return result[0] if len(result) == 1 else result
+
+    # Helper Functions
+    def _label_dict(self):  # build {label, inds} dict for self._g_dict
+        groups = np.empty([2, self.g_size], dtype=object)
+        dict = {}
+        for i in range(self.g_size):
+            icol = self._g_sketch_X[:, i].astype(bool)
+            inds_one = set(np.where(icol)[0])  # inds of one in ith column of _g_sketch_X
+            inds_zero = set(np.where(~icol)[0])  # inds of zero in ith column of _g_sketch_X
+            if i == 0:
+                dict['0'], dict['1'] = inds_zero, inds_one
+                continue
+            dicttmp = {}
+            for label, inds in dict.items():  # add found index to dictionary, update label
+                dicttmp[label + '0'] = inds & inds_zero  # inds intersection
+                dicttmp[label + '1'] = inds & inds_one  # inds intersection
+            dict = dicttmp
+        del dicttmp
+        return dict
+
+    def _getlabels(self, weights, sketch_Xs, threshold):  # get labels
+        labels = set()
+        for i in range(len(weights)):
+            if weights[i] >= threshold:
+                if len(labels) == 0:
+                    labels.add(str(sketch_Xs[i]))
+                else:
+                    labelstmp = set()
+                    for elm in labels:
+                        labelstmp.add(elm + str(sketch_Xs[i]))
+                    labels = labelstmp
+            else:
+                if len(labels) == 0:
+                    labels.update(['0', '1'])
+                else:
+                    labelstmp = set()
+                    for elm in labels:
+                        labelstmp.update([elm + '0', elm + '1'])
+                    labels = labelstmp
+        del labelstmp
+        return labels
+
     
         
 # Utility Functions
@@ -319,11 +365,12 @@ def paired_asymmetric_distance(x, y):
     weight = x % 1
     return weight.dot(np.abs(sketch_X - y).T)
 
+
 if __name__ == '__main__':
     data = np.load("..\data\Caltech101_small.npy")
     neigh = SketchKNN(n_neighbors=5, sketch_size = 20, random_state = 0)
     neigh.fit(data)
-    dists, neight_inds = neigh.kneighbors(data[:2,:], sketch_method = 'PCA', return_distance=True, candidates_scale = 20)
+    dists, neight_inds = neigh.kneighbors(data[:2,:], sketch_method = 'g_asymmetric', return_distance=True, candidates_scale = 20)
     print("distance: ", dists)
     print("neight_inds: ", neight_inds)
     '''

@@ -28,23 +28,30 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
     ----------
     n_neighbors : int, optional (default = 5)
         Number of neighbors to use by default for :meth:`kneighbors` queries.
-    algorithm : {'auto', 'ball_tree', 'kd_tree', 'brute'}, optional
-        Algorithm used to compute the nearest neighbors:
-        - 'ball_tree' will use :class:`BallTree`
-        - 'kd_tree' will use :class:`KDTree`
-        - 'brute' will use a brute-force search.
-        - 'auto' will attempt to decide the most appropriate algorithm
-          based on the values passed to :meth:`fit` method.
-        Note: fitting on sparse input will override the setting of
-        this parameter, using brute force.
-    leaf_size : int, optional (default = 30)
-        Leaf size passed to BallTree or KDTree.  This can affect the
-        speed of the construction and query, as well as the memory
-        required to store the tree.  The optimal value depends on the
-        nature of the problem.
+    sketch_method : {None, 'symmetric', 'asymmetric', 'g_asymmetric', 'PCA'}, optional (defalut = None)
+        Method to be used to compute the sketch:
+        - None will do all these available sketch, user can choose the method
+          when query by :meth:`kneighbors` method.
+        - 'symmetric' is not weighted
+        - 'asymmetric' is weighted symmetric
+        - 'g_asymmetric' is grouped asymmetric
+        - 'PCA' use float number in each sketch elements.
+        Note: If it is not None here, the sketch_method passed to 
+        :meth:`kneighbors` method will be ignored.
+    sketch_size : int, optional (default = 20)
+        The size of one sketch vector of each data point (row).
+    strip_window : number, optional (default = 50)
+        The width of each strip. This parameter does not effect 'PCA' method.
     candidates_scale : int
         Scale up n_neighbors as number of candidate when filtering using 
         sketch. (defaluts to 20).
+    group_size : int, optional (default = 4)
+        The size of group label vector, only for 'g_asymmetric' method. The 
+        label vector use binary bit, so group_size = 3 will result 8 groups.
+    group_threshold : float, optional (default = 0.1)
+        The threshold for choose group when query.
+    random_state : {None, int, :class:`random_state`}, optimal (default = None)
+        Int will be used as numpy random seed.
         
     Examples
     --------
@@ -70,9 +77,9 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
     
     Notes
     -----
-    The sketch algorithm is from the paper *Asymmetric Distance Estimation 
-    with Sketches for Similarity Search in High-Dimensional Spaces* by 
-    Wei Dong, Moses Charikar, and Kai Li.
+    For more details about sketch methods, see paper *Asymmetric Distance 
+    Estimation with Sketches for Similarity Search in High-Dimensional Spaces* 
+    by Wei Dong, Moses Charikar, and Kai Li.
     """
     def __init__(self, n_neighbors=5, sketch_method=None, sketch_size=20, strip_window = 50, candidates_scale=20,
                 group_size=4, group_threshold=0.1, random_state=None,):
@@ -124,6 +131,12 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         n_neighbors : int
             Number of neighbors to get (default is the value
             passed to the constructor).
+        sketch_method : {None, 'symmetric', 'asymmetric', 'g_asymmetric', 'PCA'}, optional (defalut = None)
+            Method to be used to filter candidates before rank the real distances.
+            If non None value passed to the constructor, this value will be 
+            ignored. If both constructor and this method get None, It will not
+            use any sketch filter, act just like normal KNN. See constructor 
+            for more details.
         candidates_scale : int
             Scale up n_neighbors as number of candidate when filtering using 
             sketch. (default is the value passed to the constructor).

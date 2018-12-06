@@ -218,11 +218,6 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         kwds = ({'squared': True})
         n_jobs = effective_n_jobs(self.n_jobs)
 
-        # result to return
-        if return_distance:
-            dists = []
-        neight_inds = []
-
         # find candidates
         if sketch_method is None:  # KNN
             pass
@@ -289,6 +284,11 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
                 raise ValueError("%s sketch_method has not been implemented.".format(sketch_method))
             candidates = np.vstack(candidates)
 
+        # result to return
+        if return_distance:
+            dists = np.empty([0,n_neighbors])
+        neight_inds = np.empty([0,n_neighbors], dtype = int)
+
         # find neighbors
         if sketch_method is None:  # KNN
             # find neighbors from all data points
@@ -310,11 +310,13 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
                     **kwds))
                 if return_distance:
                     dist, neigh_ind = zip(*result)
-                    dists.append(dist[0][0])
-                    neigh_ind = np.hstack(neigh_ind).reshape(-1)
-                    neight_inds.append(candidates[i][neigh_ind])
+                    dist = np.vstack(dist)
+                    neigh_ind = candidates[i][np.vstack(neigh_ind).reshape(-1)]
+                    dists = np.concatenate((dists,dist), axis=0)
+                    neight_inds = np.vstack((neight_inds,neigh_ind))
                 else:
-                    neight_inds.append(candidates[i][np.vstack(result)[0]])
+                    neigh_ind = candidates[i][np.vstack(result)[0]]
+                    neight_inds = np.vstack((neight_inds,neigh_ind))
             if return_distance:
                 result = dists, neight_inds
             else:
@@ -392,11 +394,10 @@ def paired_asymmetric_distance(x, y):
 
 if __name__ == '__main__':
     data = np.load("../data/Caltech101_small.npy")
-    neigh = SketchKNN(n_neighbors=100, sketch_size=50, strip_window=30, random_state=0)
+    neigh = SketchKNN(n_neighbors=100, sketch_size=50, strip_window=150, candidates_scale = 20)
     neigh.fit(data)
-    dists, neight_inds = neigh.kneighbors(data[:1, :], sketch_method='g_asymmetric', return_distance=True,
+    neight_inds = neigh.kneighbors(data[:1, :], sketch_method='symmetric', return_distance=False,
                                           candidates_scale=20)
-    print("distance: ", dists)
     print("neight_inds: ", neight_inds)
     '''
     samples = [[0., 0., 0.], [0., 500., 0.], [100., 100., 50.]]

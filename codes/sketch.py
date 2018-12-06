@@ -387,12 +387,10 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
 def paired_hamming_distance(x, y):
     return np.count_nonzero(x - y)
 
-
 def paired_asymmetric_distance(x, y):
     sketch_X = np.floor(x)
     weight = x % 1
     return weight.dot(np.abs(sketch_X - y).T)
-
 
 if __name__ == '__main__':
     data = np.load("../data/Caltech101_small.npy")

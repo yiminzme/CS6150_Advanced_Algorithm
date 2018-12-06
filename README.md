@@ -1,7 +1,13 @@
 # CS6150_Advanced_Algorithm
 
-## Data extracting
-We use one dataset, image, in our evaluation, following Section 5.1 of the paper. The dataset is extracted from the Caltech101, which is not included in this repository. The full extracted dataset is also not included, since it is too big. A small and a medium size dataset is included in the `.\data` directory.
+## Evaluation
+
+To run the evaluation, open the jupyter notebook `.\codes\plot.ipynb`. You have to update `scikit-learn` to run our code.
+
+## Data
+We use one dataset, image, in our evaluation, following Section 5.1 of the paper. The dataset is extracted from the Caltech101, which is not included in this repository. The full extracted dataset is also not included, since it is too big. A small and a medium size dataset is included in the `.\data` directory. You can download them from: https://github.com/vinc96/CS6150_Advanced_Algorithm/tree/master/data
+
+## Data Extracting
 
 This repository is ignoring the original data files. If you are interested on the original data or the data extracting process, you can follow these steps:
 1. Download the file [101_ObjectCategories.tar.gz](http://www.vision.caltech.edu/Image_Datasets/Caltech101/101_ObjectCategories.tar.gz);

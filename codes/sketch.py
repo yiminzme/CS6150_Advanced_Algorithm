@@ -46,7 +46,9 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
         :meth:`kneighbors` method will be ignored.
 
     sketch_size : :obj:`int`, default = 20
-        The size of one sketch vector of each data point (row).
+        The size of bytes for one sketch vector of each data point (row).
+        PCA use 4 bytes float value, so the vector size will be sketch_size/4.
+        Other binary vector use this value as the vector size.
 
     strip_window : number, default = 50
         The width of each strip. This parameter does not effect 'PCA' method.
@@ -157,7 +159,7 @@ class SketchKNN(NeighborsBase, KNeighborsMixin, UnsupervisedMixin):
             else:
                 self._sketch_X = self._sketch(self._fit_X)
         if self._sketch_tech['pca']:
-            self._pca = PCA(n_components=self.sketch_size)
+            self._pca = PCA(n_components=math.floor(self.sketch_size/4))
             self._pca_X = self._pca.fit_transform(self._fit_X)
 
         return self
